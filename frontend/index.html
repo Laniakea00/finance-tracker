@@ -3,23 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Finance Tracker</title>
+    <title>CRUD Operations</title>
     <style>
         body {
             font-family: Arial, sans-serif;
             text-align: center;
             margin: 20px;
         }
-        form {
-            margin: 20px;
+        form, table {
+            margin: 20px auto;
+            max-width: 600px;
         }
         input, button {
             padding: 10px;
             margin: 5px;
-            font-size: 16px;
         }
         table {
-            margin-top: 20px;
             border-collapse: collapse;
             width: 100%;
         }
@@ -30,91 +29,67 @@
             padding: 10px;
             text-align: center;
         }
-        .response {
-            margin-top: 20px;
-            padding: 10px;
-            border: 1px solid #ccc;
-            display: inline-block;
-            max-width: 400px;
-            word-wrap: break-word;
-            background-color: #f9f9f9;
-        }
     </style>
 </head>
 <body>
-<h1>Finance Tracker</h1>
+<h1>Finance-Tracker</h1>
 
-<!-- Форма для добавления данных -->
-<form id="jsonForm">
+<!-- Add Record Form -->
+<form id="addForm">
     <input type="text" id="messageInput" placeholder="Введите сообщение" required>
-    <button type="submit">Отправить</button>
+    <button type="submit">Добавить</button>
 </form>
 
-<!-- Таблица для отображения записей -->
+<!-- Records Table -->
 <table id="dataTable">
     <thead>
     <tr>
         <th>ID</th>
         <th>Сообщение</th>
+        <th>Удалить</th>
     </tr>
     </thead>
-    <tbody>
-    <!-- Здесь будут отображаться записи -->
-    </tbody>
+    <tbody></tbody>
 </table>
 
-<!-- Ответ от сервера -->
-<div id="response" class="response"></div>
-
 <script>
-    document.getElementById('jsonForm').addEventListener('submit', async function(event) {
-        event.preventDefault();
+    async function loadData() {
+        const response = await fetch('/api');
+        const data = await response.json();
+        const tableBody = document.getElementById('dataTable').querySelector('tbody');
+        tableBody.innerHTML = '';
+        data.forEach(record => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${record._id}</td>
+                <td>${record.message}</td>
+                <td><button onclick="deleteRecord('${record._id}')">Удалить</button></td>
+            `;
+            tableBody.appendChild(row);
+        });
+    }
 
+    document.getElementById('addForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
         const message = document.getElementById('messageInput').value;
-
-        try {
-            const response = await fetch('/api', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ message })
-            });
-
-            const result = await response.json();
-            const responseDiv = document.getElementById('response');
-
-            if (response.ok) {
-                responseDiv.innerHTML = `<strong>Status:</strong> ${result.status}<br><strong>Message:</strong> ${result.message}`;
-                responseDiv.style.color = 'green';
-                loadData(); // Обновляем таблицу
-            } else {
-                responseDiv.innerHTML = `<strong>Status:</strong> ${result.status}<br><strong>Message:</strong> ${result.message}`;
-                responseDiv.style.color = 'red';
-            }
-        } catch (error) {
-            document.getElementById('response').innerHTML = 'Ошибка при отправке запроса.';
+        const response = await fetch('/api', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message })
+        });
+        if (response.ok) {
+            document.getElementById('messageInput').value = '';
+            loadData();
         }
     });
 
-    // Функция для загрузки данных из базы и отображения их в таблице
-    async function loadData() {
-        try {
-            const response = await fetch('/api');
-            const data = await response.json();
-            const tableBody = document.getElementById('dataTable').getElementsByTagName('tbody')[0];
-            tableBody.innerHTML = ''; // Очищаем таблицу
-
-            data.forEach(item => {
-                const row = tableBody.insertRow();
-                row.innerHTML = `<td>${item._id}</td><td>${item.message}</td>`;
-            });
-        } catch (error) {
-            console.error('Ошибка при загрузке данных:', error);
+    async function deleteRecord(id) {
+        const response = await fetch(`/api?id=${id}`, { method: 'DELETE' });
+        if (response.ok) {
+            loadData();
         }
     }
 
-    // Загружаем данные при старте
     loadData();
 </script>
 </body>

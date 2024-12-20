@@ -1,4 +1,4 @@
-package server
+package main
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -23,8 +24,8 @@ type ResponseData struct {
 }
 
 type Message struct {
-	ID      string `json:"_id,omitempty" bson:"_id,omitempty"`
-	Message string `json:"message" bson:"message"`
+	ID      primitive.ObjectID `json:"_id,omitempty" bson:"_id,omitempty"`
+	Message string             `json:"message" bson:"message"`
 }
 
 var client *mongo.Client
@@ -51,14 +52,15 @@ func connectToMongoDB() (*mongo.Client, error) {
 	return client, nil
 }
 
-func handleJSON(w http.ResponseWriter, r *http.Request) {
+func handleAPI(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	if r.Method == http.MethodGet {
+	switch r.Method {
+	case http.MethodGet:
 		var messages []Message
 		cursor, err := collection.Find(context.Background(), bson.D{})
 		if err != nil {
-			http.Error(w, "Ошибка при извлечении данных из базы", http.StatusInternalServerError)
+			http.Error(w, "Ошибка при извлечении данных", http.StatusInternalServerError)
 			return
 		}
 		defer cursor.Close(context.Background())
@@ -73,10 +75,8 @@ func handleJSON(w http.ResponseWriter, r *http.Request) {
 		}
 
 		json.NewEncoder(w).Encode(messages)
-		return
-	}
 
-	if r.Method == http.MethodPost {
+	case http.MethodPost:
 		var reqData RequestData
 		err := json.NewDecoder(r.Body).Decode(&reqData)
 		if err != nil || reqData.Message == "" {
@@ -94,7 +94,44 @@ func handleJSON(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(ResponseData{
 				Status:  "fail",
-				Message: "Ошибка при сохранении данных в базе",
+				Message: "Ошибка при сохранении данных",
+			})
+			return
+		}
+
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(ResponseData{
+			Status:  "success",
+			Message: "Запись успешно добавлена",
+		})
+
+	case http.MethodDelete:
+		id := r.URL.Query().Get("id")
+		if id == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(ResponseData{
+				Status:  "fail",
+				Message: "ID записи не указан",
+			})
+			return
+		}
+
+		objID, err := primitive.ObjectIDFromHex(id)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(ResponseData{
+				Status:  "fail",
+				Message: "Неверный формат ID",
+			})
+			return
+		}
+
+		_, err = collection.DeleteOne(context.Background(), bson.M{"_id": objID})
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(ResponseData{
+				Status:  "fail",
+				Message: "Ошибка при удалении записи",
 			})
 			return
 		}
@@ -102,7 +139,7 @@ func handleJSON(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(ResponseData{
 			Status:  "success",
-			Message: "Данные успешно приняты",
+			Message: "Запись успешно удалена",
 		})
 	}
 }
@@ -115,7 +152,7 @@ func main() {
 	}
 	collection = client.Database("financetracker").Collection("messages")
 
-	http.HandleFunc("/api", handleJSON)
+	http.HandleFunc("/api", handleAPI)
 	http.Handle("/", http.FileServer(http.Dir("./frontend")))
 
 	fmt.Println("Сервер запущен на http://localhost:8080/")
